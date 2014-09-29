@@ -1,0 +1,282 @@
+///////////////////////////////////
+
+/// Parser: protocollo PWXML ////
+
+///////////////////////////////////
+
+import java_cup.runtime.*;
+import java.io.*;
+import java.util.*;
+ 
+init with {:
+	System.out.println("PARSERRIZZO...");
+	symbol_table = new Hashtable<String,String>();
+:};
+ 
+parser code {:
+ 
+	//variabili globali a livello di classe parser
+	public static boolean flagError = false;
+	public static String errMex = "";
+	public static Hashtable<String,String> symbol_table;
+	
+	//Overriding delle funzioni per la gestione degli errori di CUP
+	 public void report_error(String message, Object info) {
+		StringBuffer m = new StringBuffer(message);
+		if (info instanceof Symbol) {
+			 if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+				if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+					int line = (((Symbol)info).left)+1;
+					int column = (((Symbol)info).right)+1;
+					m.append(" (linea "+line+", colonna "+column+")");
+				}
+			}
+			System.err.println(m);
+		}
+	 }
+	 public void syntax_error(Symbol cur_token){}
+
+	//ritorna il valore semantico che cè all'interno dello stack ad una certa posizione, usato all'interno delle action delle regole CUP
+	//utile quando devo recuperare il valore di un simbolo Terminale o Non Terminale annegato nello stack
+	public Object stack(int position) { //NON USATA
+			return (((Symbol)stack.elementAt(tos+position)).value);
+	}
+ 
+:};
+ 
+ 
+action code {:
+ 
+	int flagDebug = 0;
+	private void stampa(String s, String tipo){ 
+		if (flagDebug == 1){
+			System.out.println(tipo+": "+ s);
+		}else{
+			if(tipo.equals("ERR")){
+				parser.errMex = "ERR: "+s; //interessa solo se ci sono Errori, nient'altro
+				parser.flagError = true;
+				System.out.println(parser.errMex);
+			}else{
+				System.out.println(tipo+": "+ s);
+			}
+		}
+	}
+:};
+
+ 
+//Terminal tokens: riconosciuti dallo scanner, il contenuto lo ricavo grazie alla classe Sym
+terminal PWXML_OPEN, PWXML_CLOSE;
+terminal COMANDO_OPEN, COMANDO_CLOSE;
+terminal PROPRIETA_OPEN, PROPRIETA_CLOSE;
+terminal LISTA_OPEN, LISTA_CLOSE;
+terminal ITEM_OPEN, ITEM_CLOSE;
+
+terminal ATTR_VALUE, ATTR_TIMESTAMP, ATTR_ID, ATTR_NAME, ATTR_TIPO;
+
+terminal APICI, PAR_ANG_C, UG, DIV;
+terminal String TIMESTAMP, NUMERO, STRINGA;
+ 
+//NON Terminal tokens: servono per creare la sintassi, vengono mescolati tra loro e con i simboli Terminali
+non terminal progr;
+non terminal pwxml, comandi;
+non terminal String attributi_pwxml, attributi_pwxml_list, attributo_pwxml;
+non terminal String attributi_comando, attributi_comando_list, attributo_comando;
+non terminal body_comando, body_comando_list;
+
+non terminal proprieta, lista, item, item_list;
+non terminal String attributi_lista, attributo_lista;
+non terminal String attributi_proprieta, attributi_proprieta_list;
+non terminal String attributi_item, attributi_item_list;
+
+non terminal String content, alfanum;
+ 
+//precedence per la regola valore
+precedence left STRINGA;
+ 
+//////////////////////////////////////
+// Inizio Grammatica
+//////////////////////////////////////
+ 
+start with progr
+;
+ 
+progr ::= pwxml 
+			{: 
+				if( parser.flagError == false ){
+					System.out.println("");
+					stampa("errMex = \"empty\"  & flagError = "+parser.flagError,"INFO");
+					stampa("FINE PARSER!", "INFO"); 
+				}else{
+					System.out.println("");
+					stampa("errMex = \""+parser.errMex+"\"  & flagError = "+parser.flagError,"INFO");
+					stampa("FINE PARSER - trovato errore!", "INFO"); 
+				}
+			:}  
+		| error {: stampa("Controllare l'XML dal principio", "ERR"); :}
+;
+ 
+pwxml ::= PWXML_OPEN  attributi_pwxml comandi PWXML_CLOSE 
+		| PWXML_OPEN error comandi PWXML_CLOSE {: stampa("Errore negli attributi del tag PWXML", "ERR"); :} 
+		| PWXML_OPEN attributi_pwxml error PWXML_CLOSE {: stampa("Check del body del tag PWXML", "ERR"); :} 
+; 
+
+
+comandi ::= COMANDO_OPEN attributi_comando body_comando_list COMANDO_CLOSE 
+		| COMANDO_OPEN error body_comando_list COMANDO_CLOSE {: stampa("Errore negli attributi del tag COMANDO", "ERR"); :}  
+		| COMANDO_OPEN attributi_comando error COMANDO_CLOSE {: stampa("Check del body del tag COMANDO", "ERR"); :} 
+;
+
+//body_comando: può contenere sia Property sia PerceptBundle
+body_comando_list ::= body_comando | body_comando_list body_comando
+;
+body_comando ::= proprieta | lista
+;
+
+proprieta ::= PROPRIETA_OPEN attributi_proprieta:attr content:body PROPRIETA_CLOSE  {: parser.symbol_table.put(attr, body); stampa(body,"BODY PROPRIETA"); :} 
+		//diverso nel caso di assenza di "content"
+		|  PROPRIETA_OPEN attributi_proprieta_list  DIV PAR_ANG_C 
+;
+
+lista ::= LISTA_OPEN attributi_lista item_list LISTA_CLOSE 
+		| LISTA_OPEN error item_list LISTA_CLOSE {: stampa("Errore negli attributi del tag LISTA", "ERR"); :}  
+		| LISTA_OPEN attributi_lista error LISTA_CLOSE {: stampa("Check del body del tag LISTA", "ERR"); :} 
+;
+
+item_list ::= item | item_list item
+;
+item ::= ITEM_OPEN attributi_item:attr content:body ITEM_CLOSE  {: 	parser.symbol_table.put(attr, body); stampa(body,"BODY ITEM"); :} 
+		//diverso nel caso di assenza di "content"
+		|  ITEM_OPEN attributi_item_list  DIV PAR_ANG_C 
+;
+
+
+// ---------------------------------------------------------------------  sintassi ATTRIBUTI
+//sintassi attributi di PWXML
+attributi_pwxml ::= attributi_pwxml_list:attr PAR_ANG_C 
+			{: 
+				stampa(attr,"ATTR. PWXML");
+			:}	
+;
+attributi_pwxml_list ::= attributo_pwxml:attr {: RESULT = new String(attr); :} 
+;
+attributo_pwxml ::= ATTR_ID UG APICI NUMERO:id APICI  
+			{: 
+				parser.symbol_table.put("ID", id);
+				RESULT = new String(" ID="+id);
+			:} 
+		|  ATTR_ID UG APICI error APICI  
+			{: 
+				stampa("ID - formato errato", "ERR");
+				RESULT = new String("");
+			:}
+		| ATTR_NAME UG APICI STRINGA:name APICI  
+			{: 
+				parser.symbol_table.put("NAME", name);
+				RESULT = new String(" NAME="+name);
+			:} 
+		|  ATTR_NAME UG APICI error APICI  
+			{: 
+				stampa("NAME - formato errato", "ERR");
+				RESULT = new String("");
+			:}
+			
+;
+
+//sintassi attributi di COMANDO
+attributi_comando ::= attributi_comando_list:attr PAR_ANG_C 
+			{: 
+				stampa(attr,"ATTR. COMANDO");
+			:}	
+;
+attributi_comando_list ::= attributo_comando:attr {:RESULT = new String(attr); :} 
+
+;
+attributo_comando ::= ATTR_NAME UG APICI STRINGA:name APICI   
+			{: 
+				parser.symbol_table.put("COMANDO-NAME", name);
+				RESULT = new String(" NAME="+name);
+			:} 
+		
+;
+ 
+//sintassi attributi di PROPRIETA
+attributi_proprieta ::= attributi_proprieta_list:attr PAR_ANG_C  //chiamata dalla regola che gestisce il BODY
+			{: 
+				RESULT = new String(attr);
+			:}	
+;
+attributi_proprieta_list ::= ATTR_NAME UG APICI STRINGA:name APICI ATTR_VALUE UG APICI alfanum:value APICI
+			{:
+			parser.symbol_table.put(name, value);
+			stampa(" NAME="+name+" VALUE="+value,"ATTR. PROPRIETA");
+			RESULT = new String(name+":"+value);
+			:}
+			| ATTR_NAME UG APICI STRINGA:name APICI 
+			{:
+			parser.symbol_table.put(name, "yes");
+			stampa(" NAME="+name+" VALUE=no-value","ATTR. PROPRIETA");
+			RESULT = new String(name+":yes");
+			:}
+;
+
+//sintassi attributi di PERCPET BUNDLE
+attributi_lista ::= attributo_lista:temp PAR_ANG_C 
+			{: 
+				stampa(temp,"ATTR. LISTA");
+			:}	
+;
+
+attributo_lista ::= ATTR_TIMESTAMP UG APICI TIMESTAMP:tempo APICI   
+			{: 
+				parser.symbol_table.put("TIMESTAMP", tempo);
+				RESULT = new String(" TIMESTAMP="+tempo);
+			:} 
+			| ATTR_NAME UG APICI STRINGA:name APICI ATTR_TIMESTAMP UG APICI TIMESTAMP:tempo APICI   
+			{: 
+				parser.symbol_table.put("BUNDLE-NAME", name);
+				parser.symbol_table.put("TIMESTAMP-"+name, tempo);
+				RESULT = new String(name+":"+tempo);
+			:} 
+;
+
+
+//sintassi attributi di ITEM
+attributi_item ::= attributi_item_list:attr PAR_ANG_C //chiamata dalla regola che gestisce il BODY
+			{: 
+				RESULT = new String(attr);
+			:}	
+;
+attributi_item_list ::=  ATTR_TIPO UG APICI STRINGA:itemtipo  APICI  ATTR_VALUE UG APICI alfanum:value APICI  
+			{: 
+				parser.symbol_table.put(itemtipo, value);
+				stampa(" ITEMTIPO="+itemtipo+" VALUE="+value,"ATTR. ITEM");
+				RESULT = new String(itemtipo+":"+value);
+			:}
+		| ATTR_NAME UG APICI alfanum:name  APICI  ATTR_VALUE UG APICI alfanum:value APICI  
+			{: 
+				parser.symbol_table.put(name, value);
+				stampa(" NAME="+name+" VALUE="+value,"ATTR. ITEM");
+				RESULT = new String(name+":"+value);
+			:}
+		| ATTR_TIPO UG APICI alfanum:itemtipo APICI  
+			{: 
+				stampa(" ITEMTIPO="+itemtipo, "ATTR. ITEM");
+				RESULT = new String(itemtipo);
+			:}
+		| ATTR_NAME UG APICI alfanum:itemtipo APICI  
+			{: 
+				stampa("NAME="+itemtipo, "ATTR. ITEM");
+				RESULT = new String(itemtipo);
+			:}			
+;
+
+
+//sono presenti alcuni lexemi che possono essere composti sia da numeri sia da caratteri, il problema è che HO 2 PATTERN che li IDENTIFICANO, quindi regola "valore"
+alfanum ::= STRINGA:str {: RESULT = new String(str); :}
+		| NUMERO:num {: RESULT = new String(num); :} 
+		| TIMESTAMP:tempo {: RESULT = new String(tempo); :} 
+;
+
+//contenuto di un qualsiasi tag PWXML completo
+ content ::= STRINGA:str {: RESULT = new String(str); :} 
+ ;

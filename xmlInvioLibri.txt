@@ -1,0 +1,12 @@
+<PWXML id="100">
+	<COMANDO name="invioLibri">
+		<PROPRIETA name="utente" value="francesco pasturenzi"/>
+		<PROPRIETA name="categoria" value="Informatica"/>
+		<LISTA timestamp="20140203121212">
+			<ITEM name="Pro Puppet">
+				per scrivere ricette PaaS
+			</ITEM>
+			<ITEM name="Big Data for Dummies" value="150"/>
+		</LISTA>
+	</COMANDO>
+</PWXML>
